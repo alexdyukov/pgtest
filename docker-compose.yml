@@ -1,0 +1,35 @@
+services:
+  tests:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM golang
+        COPY go.mod go.sum ./
+        RUN go mod download -x
+        COPY . ./
+    environment:
+      - CGO_ENABLED=0
+    command: go test -bench=. -benchmem -benchtime=30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+  postgres:
+    image: postgres
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "postgres" ]
+      interval: 3s
+      timeout: 1s
+      retries: 5
+    environment:
+      POSTGRES_PASSWORD: postgres
+      INITDBSH: >
+        #!/bin/bash
+
+        set -e
+
+        psql -v ON_ERROR_STOP=1 <<-EOSQL
+          SELECT 1;
+        EOSQL
+    entrypoint: bash -c 'printenv INITDBSH > /docker-entrypoint-initdb.d/init-db.sh && chmod a+x /docker-entrypoint-initdb.d/init-db.sh && bash /usr/local/bin/docker-entrypoint.sh postgres'
